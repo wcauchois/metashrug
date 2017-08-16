@@ -17,6 +17,14 @@ app.get('/', function(req, res) {
   res.status(403).send('Forbidden');
 });
 
+app.get('/health', function(req, res) {
+  res.send('OK');
+});
+
+var exitHandler = function(req, res) { process.exit(0); };
+app.get('/quitquitquit', exitHandler);
+app.get('/abortabortabort', exitHandler);
+
 var baseShrug = "¯\\_(ツ)_/¯";
 var shrugTemplate = "¯\\_(%s)_/¯";
 
