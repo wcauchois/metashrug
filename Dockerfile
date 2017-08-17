@@ -5,7 +5,7 @@ WORKDIR /usr/src/app
 ENV SLACK_TOKENS ${SLACK_TOKENS}
 ENV WEBHOOK_URL ${WEBHOOK_URL}
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential python-dev
+  && apt-get install -y --no-install-recommends build-essential python-dev libpq-dev
 COPY package.json package-lock.json ./
 RUN npm install
 COPY index.js .
