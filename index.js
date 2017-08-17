@@ -1,65 +1,58 @@
 // Required envs: PORT, SLACK_TOKENS, WEBHOOK_URL
 
-var express = require('express'),
-    util = require('util'),
-    request = require('request'),
-    bodyParser = require('body-parser'),
-    morgan = require('morgan'),
-    _ = require('lodash');
+const express = require('express');
+     util = require('util'),
+     request = require('request-promise-native'),
+     bodyParser = require('body-parser'),
+     morgan = require('morgan');
 
-var app = express();
+const app = express();
 
 app.disable('etag'); // Don't send 304s for everything
 app.use(morgan('short'));
 app.use(bodyParser.urlencoded({ extended: false }));
 
-app.get('/', function(req, res) {
-  res.status(403).send('Forbidden');
-});
-
-app.get('/health', function(req, res) {
+app.get(['/', '/health'], (req, res) => {
   res.send('OK');
 });
 
-var exitHandler = function(req, res) { process.exit(0); };
-app.get('/quitquitquit', exitHandler);
-app.get('/abortabortabort', exitHandler);
+app.post(['/quitquitquit', '/abortabortabort'], (req, res) => {
+  res.send('');
+  process.exit(0);
+});
 
-var baseShrug = "¯\\_(ツ)_/¯";
-var shrugTemplate = "¯\\_(%s)_/¯";
+const baseShrug = "¯\\_(ツ)_/¯";
+const shrugTemplate = "¯\\_(%s)_/¯";
 
-var slackTokens = process.env['SLACK_TOKENS'].split('|');
+const slackTokens = process.env['SLACK_TOKENS'].split('|');
 
+// Verifies the slack token before invoking handler.
 function authedHandler(handler) {
-  return function(req, res) {
+  return (req, res, next) => {
     util.log("Got: " + JSON.stringify(req.body));
     if (slackTokens.indexOf(req.body['token']) < 0) {
       res.status(403).send('Forbidden');
     } else {
       res.set('Content-Type', 'text/plain');
-      handler(req, res);
+      // catch is required so async errors propagate.
+      handler(req, res).catch(next);
     }
   };
 }
 
-app.post('/shrugemoji', authedHandler(function(req, res) {
-  var emoji = req.body.text.trim();
-  var shrugToSend = util.format(shrugTemplate, emoji);
-  var emojiForBot = ':sweat_smile:'
+app.post('/shrugemoji', authedHandler(async function(req, res) {
+  const emoji = req.body.text.trim();
+  const shrugToSend = util.format(shrugTemplate, emoji);
+  const emojiForBot = ':sweat_smile:'
   if (/^:[a-zA-Z_\-0-9]*:$/.test(emoji)) {
     emojiForBot = emoji;
   }
-  sendSlack(req.body, emojiForBot, shrugToSend, null, function(err) {
-    if (err) {
-      res.send(err.message);
-    } else {
-      res.send('');
-    }
-  });
+  await sendSlack(req.body, emojiForBot, shrugToSend);
+  res.send('');
 }));
 
-app.post('/shrug', authedHandler(function(req, res) {
-  var n = parseInt(req.body.text.trim());
+app.post('/metashrug', authedHandler(async function(req, res) {
+  let n = parseInt(req.body.text.trim());
   if (isNaN(n)) {
     res.send("Please give me a number.");
   } else if (n < 1) {
@@ -67,44 +60,38 @@ app.post('/shrug', authedHandler(function(req, res) {
   } else if (n > 20) {
     res.send("That's way too many shrugs, are you insane?");
   } else {
-    var shrugToSend = baseShrug;
+    let shrugToSend = baseShrug;
     n--;
     for (; n > 0; n--) {
       shrugToSend = util.format(shrugTemplate, shrugToSend);
     }
-    sendSlack(req.body, ':sweat_smile:', shrugToSend, null, function(err) {
-      if (err) {
-        res.send(err.message);
-      } else {
-        res.send('');
-      }
-    });
+    await sendSlack(req.body, ':sweat_smile:', shrugToSend);
+    res.send('');
   }
 }));
 
-function sendSlack(params, emoji, text, attachments, cb) {
-  var payload = {'username': params['user_name'], 'icon_emoji': emoji, 'channel': params['channel_id']};
-  if (text) payload['text'] = text;
-  if (attachments) payload['attachments'] = attachments;
-  request({
+async function sendSlack(params, emoji, text, attachments) {
+  const payload = {
+    'username': params['user_name'],
+    'icon_emoji': emoji,
+    'channel': params['channel_id']
+  };
+  if (text) {
+    payload['text'] = text;
+  }
+  if (attachments) {
+    payload['attachments'] = attachments;
+  }
+  await request({
     url: process.env['WEBHOOK_URL'],
     form: {'payload': JSON.stringify(payload)},
     method: 'POST'
-  }, function(err, response, body) {
-    if (err || response.statusCode !== 200) {
-      var newErr = new Error("Error posting to Slack: " + ((err && err.message) ||
-        ("Got code " + response.statusCode)) + "\n\n" + body);
-      util.log(newErr.message);
-      cb && cb(newErr);
-    } else {
-      cb(null);
-    }
   });
 }
 
 if (require.main === module) {
-  var port = process.env['PORT'] || 3000;
-  app.listen(port, function() {
+  const port = process.env['PORT'] || 3000;
+  app.listen(port, () => {
     util.log('Started on port ' + port);
   });
 }
