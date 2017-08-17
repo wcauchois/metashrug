@@ -24,7 +24,7 @@ app.post(['/quitquitquit', '/abortabortabort'], (req, res) => {
 const baseShrug = "¯\\_(ツ)_/¯";
 const shrugTemplate = "¯\\_(%s)_/¯";
 
-const slackTokens = process.env['SLACK_TOKENS'].split('|');
+const slackTokens = process.env['SLACK_TOKENS'].split(',');
 
 // Verifies the slack token before invoking handler.
 function authedHandler(handler) {
