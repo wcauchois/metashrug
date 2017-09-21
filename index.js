@@ -43,7 +43,7 @@ function authedHandler(handler) {
 app.post('/shrugemoji', authedHandler(async function(req, res) {
   const emoji = req.body.text.trim();
   const shrugToSend = util.format(shrugTemplate, emoji);
-  const emojiForBot = ':sweat_smile:'
+  let emojiForBot = ':sweat_smile:'
   if (/^:[a-zA-Z_\-0-9]*:$/.test(emoji)) {
     emojiForBot = emoji;
   }
