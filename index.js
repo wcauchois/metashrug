@@ -4,7 +4,14 @@ const express = require('express');
      util = require('util'),
      request = require('request-promise-native'),
      bodyParser = require('body-parser'),
-     morgan = require('morgan');
+     morgan = require('morgan'),
+     fs = require('mz/fs'),
+     path = require('path'),
+     mongoose = require('mongoose'),
+     CronJob = require('cron').CronJob;
+
+// http://mongoosejs.com/docs/promises.html
+mongoose.Promise = global.Promise;
 
 const app = express();
 
@@ -89,7 +96,63 @@ async function sendSlack(params, emoji, text, attachments) {
   });
 }
 
+mongoose.connect('mongodb://localhost/metashrug', {useMongoClient: true});
+
+const beeMovieProgressSchema = mongoose.Schema({
+  line: Number
+});
+const BeeMovieProgress = mongoose.model('BeeMovieProgress', beeMovieProgressSchema);
+
+const BEE_MOVIE_PROGRESS_ID = mongoose.Types.ObjectId('59c5359769d5f25c172d877a');
+async function incrementBeeMovieProgress() {
+  await BeeMovieProgress.findOneAndUpdate(
+    {_id: BEE_MOVIE_PROGRESS_ID},
+    {'$inc': {'line': 1}},
+    {upsert: true}
+  );
+}
+
+async function getBeeMovieProgress() {
+  const record = await BeeMovieProgress.findOne({_id: BEE_MOVIE_PROGRESS_ID});
+  if (record) {
+    return record.line;
+  } else {
+    return 0;
+  }
+}
+
+let beeMovieScript;
+let beeMovieLines = [];
+const BEE_MOVIE_SCRIPT_FILE = 'bee-movie-script.txt';
+async function initializeBeeMovie() {
+  beeMovieScript = await fs.readFile(path.join(__dirname, BEE_MOVIE_SCRIPT_FILE), 'utf-8');
+  beeMovieScript.split('\n').forEach((line) => {
+    const trimmedLine = line.trim();
+    if (trimmedLine !== '') {
+      beeMovieLines.push(trimmedLine);
+    }
+  });
+  util.log(`Loaded bee movie script (${beeMovieLines.length} lines)`);
+}
+
 if (require.main === module) {
+  initializeBeeMovie().then(() => {
+    new CronJob('0 14 * * * *', async function() {
+      const scriptLine = beeMovieScript[await getBeeMovieProgress()];
+      util.log(`Posting a line from the bee movie: ${scriptLine}`);
+      await request({
+        url: process.env['BEE_MOVIE_WEBHOOK_URL'],
+        form: {payload: JSON.stringify({
+          username: 'Bee Bot',
+          icon_emoji: ':bee:',
+          text: scriptLine
+        })},
+        method: 'POST'
+      });
+      await incrementBeeMovieProgress();
+    }, null, true, 'America/New_York');
+  });
+
   const port = process.env['PORT'] || 3000;
   app.listen(port, () => {
     util.log('Started on port ' + port);
